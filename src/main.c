@@ -5,8 +5,8 @@
 /*                                                    +:+ +:+         +:+     */
 /*   By: kguibout <kguibout@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
-/*   Created: 2021/10/02 18:32:59 by kguibout          #+#    #+#             */
-/*   Updated: 2021/10/03 13:59:54 by kguibout         ###   ########.fr       */
+/*   Created: 2021/10/08 14:52:40 by kguibout          #+#    #+#             */
+/*   Updated: 2021/10/08 16:28:37 by kguibout         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -183,6 +183,17 @@ char	*get_string_from_shstrtab(t_u32 index)
 	return (get_env()->sting_table + index);
 }
 
+Elf64_Shdr  *get_section_header(size_t index)
+{
+    Elf64_Shdr	*section_header;
+
+    if (index >= ((Elf64_Ehdr *)get_env()->elf_file)->e_shnum)
+        return (NULL);
+    section_header = get_env()->elf_file + ((Elf64_Ehdr *)get_env()->elf_file)->e_shoff;
+    section_header += index;
+    return (section_header);
+}
+
 void	print_section_header(size_t	index)
 {
 	Elf64_Shdr	*section_header;
@@ -319,19 +330,21 @@ void init_elf_data(void	*elf_file)
 	get_env()->sting_table_size = section_header->sh_size;
 }
 
-int	get_file_descriptor(int number_of_args, char **args)
+int	get_file_descriptor()
 {
-	int fd;
+	int 	fd;
+	char	*path;
 
-	if (number_of_args <= 1)
+	if (get_env()->files.total == 0)
 	{
 		get_env()->path = "a.out";
 		fd = open_file(get_env()->path, O_RDONLY);
 	}
 	else
 	{
-		get_env()->path = args[1];
-		fd = open_file(args[1], O_RDONLY);
+		path = *(char **)vector_get(&get_env()->files, 0);
+		get_env()->path = path;
+		fd = open_file(path, O_RDONLY);
 	}
 	return (fd);
 }
@@ -341,13 +354,13 @@ void	print_error(const char *error_message)
 	ft_printf("%s: %s: %s\n", get_env()->exec_name, get_env()->path, error_message);
 }
 
-void *get_file_data(int number_of_args, char **args)
+void *get_file_data()
 {
 	int			fd;
 	struct stat	buff;
 	void		*mem;
 
-	fd = get_file_descriptor(number_of_args, args);
+	fd = get_file_descriptor();
 	if (fd == -1)
 		return (NULL);
 	fstat(fd, &buff);
@@ -360,29 +373,67 @@ void *get_file_data(int number_of_args, char **args)
 	return (mem);
 }
 
+bool    insert_symbol_in_alphabetical_order(t_vector *vector, Elf64_Sym *symbol, bool reverse_order)
+{
+    size_t j = 0;
+
+    while (j < vector->total)
+    {
+        Elf64_Sym *tmp_symbol;
+        tmp_symbol = *(Elf64_Sym **)vector_get(vector, j);
+        if ((ft_strcmp(get_string_from_shstrtab(symbol->st_name), get_string_from_shstrtab(tmp_symbol->st_name)) < 0) != reverse_order)
+        {
+            if (!vector_insert(vector, j, &symbol))
+                return (false);
+            break;
+        }
+        j++;
+    }
+    if (j == vector->total)
+    {
+        if (!vector_push(vector, &symbol))
+            return (false);
+    }
+    return (true);
+}
+
 int main(int ac, char **av)
 {
 	void *mem;
 
+	init_env();
 	get_env()->exec_name = av[0];
-	mem = get_file_data(ac, av);
+    if (!parse_args(ac, av))
+	{
+        return (EXIT_FAILURE);
+	}
+	mem = get_file_data();
 	if (mem == NULL)
 		return (EXIT_FAILURE);
 	init_elf_data(mem);
-	Elf64_Ehdr *elf_header;
-	elf_header = mem;
-	print_elf_header_info(elf_header);
 
 	Elf64_Sym	*symbol_array;
+	t_vector    vector;
+
+	vector_init(&vector, sizeof(Elf64_Sym *));
 
 	symbol_array = get_env()->elf_file + get_symbol_table_section_header()->sh_offset;
 	size_t i = 0;
 	while (i < get_symbol_table_section_header()->sh_size / get_symbol_table_section_header()->sh_entsize)
 	{
-		if (symbol_array[i].st_name != 0)
-			ft_printf("%s\n", get_string_from_shstrtab(symbol_array[i].st_name));
+		if (symbol_array[i].st_name != 0 && ELF64_ST_TYPE(symbol_array[i].st_info) != STT_FILE)
+        {
+		    insert_symbol_in_alphabetical_order(&vector, &symbol_array[i], get_env()->options.reverse);
+        }
 		i++;
 	}
-	ft_printf("%zu\n", get_symbol_table_section_header_number());
+	ft_printf("%zu\n", vector.total);
+	i = 0;
+	while (i < vector.total)
+    {
+        Elf64_Sym *str = *(Elf64_Sym **)vector_get(&vector, i);
+	    ft_printf("%016x %s %s %s\n", str->st_value, get_string_from_shstrtab(str->st_name), get_section_string_from_strtab(get_section_header(str->st_shndx)->sh_name), ELF64_ST_BIND(str->st_info) == STB_LOCAL ? "LOCAL" : "EXTERNAL");
+	    i++;
+    }
 	return (EXIT_SUCCESS);
 }

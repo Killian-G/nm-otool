@@ -1,14 +1,3 @@
-# ************************************************************************** #
-#                                                                            #
-#                                                        :::      ::::::::   #
-#   Makefile                                           :+:      :+:    :+:   #
-#                                                    +:+ +:+         +:+     #
-#   By: kguibout <kguibout@student.42.fr>          +#+  +:+       +#+        #
-#                                                +#+#+#+#+#+   +#+           #
-#   Created: 2021/10/02 18:33:03 by kguibout          #+#    #+#             #
-#   Updated: 202#   Updated: 2021/10/02 19:39:16 by kguibout         ###   ########.fr       #                                                              #
-# ************************************************************************** #
-
 NAME := ft_nm
 
 ifdef COUNT
@@ -47,13 +36,17 @@ endif
 
 # Sources
 
-SRCDIR_MESH = mesh/
+SRCDIR_OPTION = option/
 
-SRCS_MESH =	draw.c	\
-			mesh.c
+SRCS_OPTION =	numeric_sort_option.c   \
+                reverse_sort_option.c   \
+                no_sort_option.c
 
-SRCS =	env.c	\
-		main.c
+SRCS =	$(addprefix $(SRCDIR_OPTION), $(SRCS_OPTION))   \
+        env.c	\
+		main.c  \
+		args_parser.c   \
+		print_symbol.c
 
 # Headers
 
@@ -61,7 +54,8 @@ HDRS =	ft_nm.h
 
 # Final files
 
-OBJDIRS :=	$(OBJ_DIR)
+OBJDIRS :=	$(OBJ_DIR)  \
+            $(OBJ_DIR)$(SRCDIR_OPTION)
 
 OBJS :=	$(addprefix $(OBJ_DIR),$(SRCS:.c=.o))
 
@@ -109,27 +103,25 @@ endif
 all: premake
 
 debug:
-	@$(MAKE) OPTI=0 FS=1 DEBUG=1
+	$(MAKE) OPTI=0 FS=1 DEBUG=1
 
 premake: $(OBJDIRS) libmake_libft
-	@$(MAKE) $(NAME) --no-print-directory COUNT=1 OPTI=$(OPTI) FS=$(FS) DEBUG=$(DEBUG)
+	$(MAKE) $(NAME) --no-print-directory COUNT=1 OPTI=$(OPTI) FS=$(FS) DEBUG=$(DEBUG)
 
 libmake_libft:
-	@cd $(LFT_DIR) && $(MAKE) OPTI=$(OPTI) FS=$(FS) DEBUG=$(DEBUG)
+	cd $(LFT_DIR) && $(MAKE) OPTI=$(OPTI) FS=$(FS) DEBUG=$(DEBUG)
 
 libclean:
-	@cd $(LFT_DIR) && $(MAKE) clean
-	@cd $(MY_SDL_DIR) && $(MAKE) clean
+	cd $(LFT_DIR) && $(MAKE) clean
 
 libfclean:
-	@cd $(LFT_DIR) && $(MAKE) fclean
-	@cd $(MY_SDL_DIR) && $(MAKE) fclean
+	cd $(LFT_DIR) && $(MAKE) fclean
 
 test: libmake $(HDRS) $(LFT)
 	$(CC) $(CFLAGS) -o test test.c $(FULL_HDRS) $(LIB_FLG)
 
 $(OBJDIRS):
-	@mkdir -p $@
+	mkdir -p $@
 
 # -lstdc++ -lunwind -DWITHGPERFTOOLS /usr/lib/libprofiler.*
 
