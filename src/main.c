@@ -12,14 +12,15 @@
 
 #include "ft_nm.h"
 
-int open_file(char *path, int flags)
+int	open_file(char *path, int flags)
 {
 	int			fd;
 
 	fd = open(path, flags);
 	if (fd == -1)
 	{
-		ft_printf("%s: '%s': %s\n", get_env()->exec_name, get_env()->path, strerror(errno));
+		ft_printf("%s: '%s': %s\n", get_env()->exec_name, get_env()->path,
+				  strerror(errno));
 		return (-1);
 	}
 	return (fd);
@@ -27,8 +28,9 @@ int open_file(char *path, int flags)
 
 void	print_elf_header_magic(Elf64_Ehdr *header)
 {
-	ft_printf("Magic number: %#x '%c' '%c' '%c'\n", header->e_ident[EI_MAG0], header->e_ident[EI_MAG1],
-			  header->e_ident[EI_MAG2], header->e_ident[EI_MAG3]);
+	ft_printf("Magic number: %#x '%c' '%c' '%c'\n", header->e_ident[EI_MAG0],
+			  header->e_ident[EI_MAG1], header->e_ident[EI_MAG2],
+			  header->e_ident[EI_MAG3]);
 }
 
 void	print_elf_header_architecture(Elf64_Ehdr *header)
@@ -336,16 +338,13 @@ int	get_file_descriptor()
 	char	*path;
 
 	if (get_env()->files.total == 0)
-	{
 		get_env()->path = "a.out";
-		fd = open_file(get_env()->path, O_RDONLY);
-	}
 	else
 	{
 		path = *(char **)vector_get(&get_env()->files, 0);
 		get_env()->path = path;
-		fd = open_file(path, O_RDONLY);
 	}
+	fd = open_file(get_env()->path, O_RDONLY);
 	return (fd);
 }
 
@@ -373,6 +372,49 @@ void *get_file_data()
 	return (mem);
 }
 
+// TODO Check for test, test_, test__
+
+void Add()
+{
+
+}
+
+void tndd()
+{
+
+}
+
+int	custom_strcmp(const char *s1, const char *s2)
+{
+	size_t			i;
+	size_t			j;
+	unsigned char	*s1_tmp;
+	unsigned char	*s2_tmp;
+
+	s1_tmp = (unsigned char *)s1;
+	s2_tmp = (unsigned char *)s2;
+	i = 0;
+	j = 0;
+	while (true)
+	{
+		if (s1_tmp[i] == '_')
+		{
+			i++;
+			continue;
+		}
+		if (s2_tmp[j] == '_')
+		{
+			j++;
+			continue;
+		}
+		if (ft_tolower(s1_tmp[i]) != ft_tolower(s2_tmp[j]) || s1_tmp[i] == '\0' || s2_tmp[j] == '\0')
+			break;
+		i++;
+		j++;
+	}
+	return ((int)(ft_tolower(s1_tmp[i]) - ft_tolower(s2_tmp[j])));
+}
+
 bool    insert_symbol_in_alphabetical_order(t_vector *vector, Elf64_Sym *symbol, bool reverse_order)
 {
     size_t j = 0;
@@ -381,7 +423,7 @@ bool    insert_symbol_in_alphabetical_order(t_vector *vector, Elf64_Sym *symbol,
     {
         Elf64_Sym *tmp_symbol;
         tmp_symbol = *(Elf64_Sym **)vector_get(vector, j);
-        if ((ft_strcmp(get_string_from_shstrtab(symbol->st_name), get_string_from_shstrtab(tmp_symbol->st_name)) < 0) != reverse_order)
+        if ((custom_strcmp(get_string_from_shstrtab(symbol->st_name), get_string_from_shstrtab(tmp_symbol->st_name)) < 0) != reverse_order)
         {
             if (!vector_insert(vector, j, &symbol))
                 return (false);
@@ -395,6 +437,79 @@ bool    insert_symbol_in_alphabetical_order(t_vector *vector, Elf64_Sym *symbol,
             return (false);
     }
     return (true);
+}
+
+char get_right_symbol(unsigned char binding, char local, char global)
+{
+	if (binding == STB_LOCAL)
+		return (local);
+	else
+		return (global);
+}
+
+char get_symbol_type_char(Elf64_Sym *sym)
+{
+	char			*section;
+	unsigned char	binding;
+
+	section = get_section_string_from_strtab(get_section_header(sym->st_shndx)->sh_name);
+	if (section == NULL)
+		return (0);
+	binding = ELF64_ST_BIND(sym->st_info);
+	if (binding >= STB_NUM)
+	{
+		ft_printf("Symbol binding is invalid or not supported (%hhd)", binding);
+		return (0);
+	}
+	// TODO Check for STB_WEAK and for STB_LOPROC, STB_HIPROC
+//	if (binding == STB_WEAK)
+//		return sym->
+	if (ft_strequ(section, ".bss"))
+		return (get_right_symbol(binding, 'b', 'B'));
+	else if (ft_strequ(section, ".data"))
+		return (get_right_symbol(binding, 'd', 'D'));
+	else if (ft_strequ(section, ".rodata") || ft_strequ(section, ".rodata1"))
+		return (get_right_symbol(binding, 'r', 'R'));
+	else if (ft_strequ(section, ".text"))
+		return (get_right_symbol(binding, 't', 'T'));
+	else if (ft_strequ(section, ""))
+		return 'U';
+	else
+		return '?';
+}
+
+int test()
+{
+	return 3;
+}
+
+int tea_t()
+{
+	return 3;
+}
+
+int te_st()
+{
+	return 3;
+}
+
+/**
+ * @warning Do not free the returned string !
+ * @brief
+ * @param sym
+ * @return
+ */
+char	*get_right_address_string(Elf64_Sym *sym)
+{
+	static char buff[17];
+
+	if (sym->st_value != 0)
+	{
+		ft_snprintf(buff, sizeof(buff), "%016x", sym->st_value);
+		return (buff);
+	}
+	else
+		return ("                ");
 }
 
 int main(int ac, char **av)
@@ -430,10 +545,28 @@ int main(int ac, char **av)
 	ft_printf("%zu\n", vector.total);
 	i = 0;
 	while (i < vector.total)
-    {
-        Elf64_Sym *str = *(Elf64_Sym **)vector_get(&vector, i);
-	    ft_printf("%016x %s %s %s\n", str->st_value, get_string_from_shstrtab(str->st_name), get_section_string_from_strtab(get_section_header(str->st_shndx)->sh_name), ELF64_ST_BIND(str->st_info) == STB_LOCAL ? "LOCAL" : "EXTERNAL");
-	    i++;
-    }
+	{
+		Elf64_Sym *sym = *(Elf64_Sym **)vector_get(&vector, i);
+//		ft_printf("%s %c %s %s %s\n",
+//				  get_right_address_string(sym),
+//				  get_symbol_type_char(sym),
+//				  get_string_from_shstrtab(sym->st_name),
+//				  get_section_string_from_strtab(get_section_header(sym->st_shndx)->sh_name),
+//				  ELF64_ST_BIND(sym->st_info) == STB_LOCAL ? "LOCAL" : "EXTERNAL");
+		char symbol_char;
+		symbol_char = get_symbol_type_char(sym);
+		ft_printf("%s %c %s",
+				  get_right_address_string(sym),
+				  symbol_char,
+				  get_string_from_shstrtab(sym->st_name));
+		if (symbol_char == '?')
+		{
+			ft_printf(" | binding: %s | section: %s",
+					  ELF64_ST_BIND(sym->st_info) == STB_LOCAL ? "LOCAL" : "EXTERNAL",
+					  get_section_string_from_strtab(get_section_header(sym->st_shndx)->sh_name));
+		}
+		ft_printf("\n");
+		i++;
+	}
 	return (EXIT_SUCCESS);
 }

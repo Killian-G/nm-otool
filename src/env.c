@@ -22,12 +22,13 @@ t_env	*get_env(void)
 t_option	*get_options_func(void)
 {
 	static t_option	options[] = {
-			{.name = "numeric-sort", .alias = "n", .func = numeric_sort_option},
-			{.name = NULL, .alias = "v", .func = numeric_sort_option},
-			{.name = "no-sort", .alias = "p", .func = no_sort_option},
-			{.name = "reverse-sort", .alias = "r", .func = reverse_sort_option},
-			{.func = NULL},
+	{.name = "numeric-sort", .alias = "n", .func = numeric_sort_option},
+	{.name = NULL, .alias = "v", .func = numeric_sort_option},
+	{.name = "no-sort", .alias = "p", .func = no_sort_option},
+	{.name = "reverse-sort", .alias = "r", .func = reverse_sort_option},
+	{.func = NULL},
 	};
+
 	return (options);
 }
 

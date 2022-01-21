@@ -14,5 +14,5 @@
 
 void	print_symbol(Elf64_Sym *symbol)
 {
-	
+	(void)symbol;
 }
