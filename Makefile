@@ -46,6 +46,7 @@ SRCS =	$(addprefix $(SRCDIR_OPTION), $(SRCS_OPTION))   \
         env.c	\
 		main.c  \
 		args_parser.c   \
+		section.c \
 		print_symbol.c
 
 # Headers

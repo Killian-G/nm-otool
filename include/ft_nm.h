@@ -63,5 +63,6 @@ void	numeric_sort_option(void);
 void	no_sort_option(void);
 void	reverse_sort_option(void);
 t_option	*get_options_func(void);
+void	print_section(Elf64_Shdr *section_header);
 
 #endif //FT_NM_H

@@ -397,17 +397,19 @@ int	custom_strcmp(const char *s1, const char *s2)
 	j = 0;
 	while (true)
 	{
-		if (s1_tmp[i] == '_')
+		if (s1_tmp[i] == '\0' || s2_tmp[j] == '\0')
+			break;
+		if (!ft_isalnum(s1_tmp[i]))
 		{
 			i++;
 			continue;
 		}
-		if (s2_tmp[j] == '_')
+		if (!ft_isalnum(s2_tmp[j]))
 		{
 			j++;
 			continue;
 		}
-		if (ft_tolower(s1_tmp[i]) != ft_tolower(s2_tmp[j]) || s1_tmp[i] == '\0' || s2_tmp[j] == '\0')
+		if (ft_tolower(s1_tmp[i]) != ft_tolower(s2_tmp[j]))
 			break;
 		i++;
 		j++;
@@ -449,11 +451,11 @@ char get_right_symbol(unsigned char binding, char local, char global)
 
 char get_symbol_type_char(Elf64_Sym *sym)
 {
-	char			*section;
+	Elf64_Shdr		*section_header;
 	unsigned char	binding;
 
-	section = get_section_string_from_strtab(get_section_header(sym->st_shndx)->sh_name);
-	if (section == NULL)
+	section_header = get_section_header(sym->st_shndx);
+	if (section_header == NULL)
 		return (0);
 	binding = ELF64_ST_BIND(sym->st_info);
 	if (binding >= STB_NUM)
@@ -462,18 +464,25 @@ char get_symbol_type_char(Elf64_Sym *sym)
 		return (0);
 	}
 	// TODO Check for STB_WEAK and for STB_LOPROC, STB_HIPROC
-//	if (binding == STB_WEAK)
-//		return sym->
-	if (ft_strequ(section, ".bss"))
-		return (get_right_symbol(binding, 'b', 'B'));
-	else if (ft_strequ(section, ".data"))
-		return (get_right_symbol(binding, 'd', 'D'));
-	else if (ft_strequ(section, ".rodata") || ft_strequ(section, ".rodata1"))
-		return (get_right_symbol(binding, 'r', 'R'));
-	else if (ft_strequ(section, ".text"))
-		return (get_right_symbol(binding, 't', 'T'));
-	else if (ft_strequ(section, ""))
+	if (binding == STB_WEAK)
+	{
+		if (sym->st_value == 0)
+			return 'w';
+		else
+			return 'W';
+	}
+	else if (sym->st_shndx == SHN_UNDEF)
 		return 'U';
+	else if (section_header->sh_type == SHT_NOBITS)
+		return (get_right_symbol(binding, 'b', 'B'));
+	else if (section_header->sh_flags & SHF_ALLOC)
+	{
+		if (section_header->sh_flags & SHF_EXECINSTR)
+			return (get_right_symbol(binding, 't', 'T'));
+		else if (!(section_header->sh_flags & SHF_WRITE))
+			return (get_right_symbol(binding, 'r', 'R'));
+		return (get_right_symbol(binding, 'd', 'D'));
+	}
 	else
 		return '?';
 }
@@ -542,7 +551,6 @@ int main(int ac, char **av)
         }
 		i++;
 	}
-	ft_printf("%zu\n", vector.total);
 	i = 0;
 	while (i < vector.total)
 	{
@@ -566,6 +574,8 @@ int main(int ac, char **av)
 					  get_section_string_from_strtab(get_section_header(sym->st_shndx)->sh_name));
 		}
 		ft_printf("\n");
+		if (symbol_char == '?')
+			print_section(get_section_header(sym->st_shndx));
 		i++;
 	}
 	return (EXIT_SUCCESS);
