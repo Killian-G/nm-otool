@@ -49,10 +49,12 @@ typedef struct	s_env
 	void		*elf_file;
 	char		*section_sting_table;
 	size_t		section_sting_table_size;
-	char		*sting_table;
-	size_t		sting_table_size;
+	char		*symbol_sting_table;
+	size_t		symbol_sting_table_size;
 	t_vector	files;
 	t_options	options;
+	bool		is_64bit;
+	size_t		file_index;
 }	t_env;
 
 t_env	*get_env();
