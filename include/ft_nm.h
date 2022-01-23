@@ -57,8 +57,15 @@ typedef struct	s_env
 	size_t		file_index;
 }	t_env;
 
+typedef struct s_file_data
+{
+	void	*data;
+	size_t	length;
+}	t_file_data;
+
 t_env	*get_env();
 void 	init_env();
+void	free_env(void);
 bool    parse_args(int ac, char **av);
 
 void	numeric_sort_option(void);
@@ -66,5 +73,6 @@ void	no_sort_option(void);
 void	reverse_sort_option(void);
 t_option	*get_options_func(void);
 void	print_section(Elf64_Shdr *section_header);
-
+bool	merge_sort_string(char **string_array, ssize_t size, int (*comp_func)(const char *, const char *));
+bool	merge_sort(void *array, ssize_t size, size_t data_size, int (*comp_func)(void *, void *));
 #endif //FT_NM_H

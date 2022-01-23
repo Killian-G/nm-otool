@@ -39,3 +39,11 @@ void	init_env(void)
 	env = get_env();
 	vector_init(&env->files, sizeof(char *));
 }
+
+void	free_env(void)
+{
+	t_env	*env;
+
+	env = get_env();
+	vector_free(&env->files);
+}

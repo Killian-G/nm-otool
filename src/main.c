@@ -387,7 +387,7 @@ bool init_elf_data(void	*elf_file)
 {
 	Elf32_Ehdr	*header;
 
-	if (get_env()->files.total > 0)
+	if (get_env()->files.total > 1)
 		ft_printf("\n%s:\n", get_env()->path);
 	get_env()->elf_file = elf_file;
 	header = elf_file;
@@ -428,7 +428,7 @@ void	print_error(const char *error_message)
 	ft_printf("%s: %s: %s\n", get_env()->exec_name, get_env()->path, error_message);
 }
 
-void *get_file_data()
+t_file_data	get_file_data()
 {
 	int			fd;
 	struct stat	buff;
@@ -436,22 +436,22 @@ void *get_file_data()
 
 	fd = get_file_descriptor();
 	if (fd == -1)
-		return (NULL);
+		return ((t_file_data){0});
 	fstat(fd, &buff);
 	if ((buff.st_mode & S_IFMT) == S_IFDIR)
 	{
 		ft_dprintf(2,"%s: Warning: '%s' is a directory\n", get_env()->exec_name, get_env()->path);
 		close(fd);
-		return (NULL);
+		return ((t_file_data){0});
 	}
 	mem = mmap(NULL, buff.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
 	close(fd);
 	if (mem == MAP_FAILED)
 	{
 		print_error("Fail to allocate file data");
-		return (NULL);
+		return ((t_file_data){0});
 	}
-	return (mem);
+	return ((t_file_data){.data=mem, .length=buff.st_size});
 }
 
 // TODO Check for test, test_, test__
@@ -501,6 +501,16 @@ int	custom_strcmp(const char *s1, const char *s2)
 		return ((int)(j - i));
 	}
 	return ((int)(ft_tolower(s1_tmp[i]) - ft_tolower(s2_tmp[j])));
+}
+
+int sym_cmp(void *d1, void *d2)
+{
+	Elf64_Sym *tmp1;
+	Elf64_Sym *tmp2;
+
+	tmp1 = *(Elf64_Sym **)d1;
+	tmp2 = *(Elf64_Sym **)d2;
+	return (custom_strcmp(get_string_from_shstrtab(tmp1->st_name), get_string_from_shstrtab(tmp2->st_name)));
 }
 
 bool    insert_symbol_in_alphabetical_order_64bit(t_vector *vector, Elf64_Sym *symbol, bool reverse_order)
@@ -559,47 +569,106 @@ char get_right_symbol(unsigned char binding, char local, char global)
 		return (global);
 }
 
-char get_symbol_type_char_64bit(Elf64_Sym *sym)
+unsigned char	get_binding(void	*sym)
 {
-	Elf64_Shdr		*section_header;
-	unsigned char	binding;
+	if (get_env()->is_64bit)
+		return (ELF64_ST_BIND(((Elf64_Sym *)sym)->st_info));
+	else
+		return (ELF32_ST_BIND(((Elf32_Sym *)sym)->st_info));
+}
 
-	section_header = get_section_header_64bit(sym->st_shndx);
+void	*get_section_header(void *sym)
+{
+	if (get_env()->is_64bit)
+		return (get_section_header_64bit(((Elf64_Sym *)sym)->st_shndx));
+	else
+		return (get_section_header_32bit(((Elf32_Sym *)sym)->st_shndx));
+}
+
+unsigned char get_symbol_type(void *sym)
+{
+	if (get_env()->is_64bit)
+		return (ELF64_ST_TYPE(((Elf64_Sym *)sym)->st_info));
+	else
+		return (ELF32_ST_TYPE(((Elf32_Sym *)sym)->st_info));
+}
+
+Elf64_Addr get_symbol_value(void *sym)
+{
+	if (get_env()->is_64bit)
+		return (((Elf64_Sym *)sym)->st_value);
+	else
+		return (((Elf32_Sym *)sym)->st_value);
+}
+
+Elf64_Section	get_symbol_section_index(void *sym)
+{
+	if (get_env()->is_64bit)
+		return (((Elf64_Sym *)sym)->st_shndx);
+	else
+		return (((Elf32_Sym *)sym)->st_shndx);
+}
+
+Elf64_Word	get_section_header_type(void *section_header)
+{
+	if (get_env()->is_64bit)
+		return (((Elf64_Shdr *)section_header)->sh_type);
+	else
+		return (((Elf32_Shdr *)section_header)->sh_type);
+}
+
+Elf64_Xword	get_section_header_flags(void *section_header)
+{
+	if (get_env()->is_64bit)
+		return (((Elf64_Shdr *)section_header)->sh_flags);
+	else
+		return (((Elf32_Shdr *)section_header)->sh_flags);
+}
+
+char	weak_symbol(void *sym)
+{
+	if (get_symbol_type(sym) == STT_OBJECT)
+	{
+		if (get_symbol_value(sym) == 0)
+			return 'v';
+		else
+			return 'V';
+	}
+	else
+	{
+		if (get_symbol_value(sym) == 0)
+			return 'w';
+		else
+			return 'W';
+	}
+}
+
+char get_symbol_type_char(void *sym)
+{
+	unsigned char	binding;
+	void			*section_header;
+
+	section_header = get_section_header(sym);
 	if (section_header == NULL)
 		return (0);
-	binding = ELF64_ST_BIND(sym->st_info);
+	binding = get_binding(sym);
 	if (binding >= STB_NUM)
 	{
-		ft_printf("Symbol binding is invalid or not supported (%hhd)", binding);
+		ft_printf("Symbol binding is invalid or not supported (%hhd)",
+				  binding);
 		return (0);
 	}
-	// TODO Check for STB_WEAK and for STB_LOPROC, STB_HIPROC
 	if (binding == STB_WEAK)
-	{
-		if (ELF64_ST_TYPE(sym->st_info) == STT_OBJECT)
-		{
-			if (sym->st_value == 0)
-				return 'v';
-			else
-				return 'V';
-		}
-		else
-		{
-			if (sym->st_value == 0)
-				return 'w';
-			else
-				return 'W';
-		}
-	}
-	else if (sym->st_shndx == SHN_UNDEF)
+		return weak_symbol(sym);
+	else if (get_symbol_section_index(sym) == SHN_UNDEF)
 		return 'U';
-	else if (section_header->sh_type == SHT_NOBITS)
+	else if (get_section_header_type(section_header) == SHT_NOBITS)
 		return (get_right_symbol(binding, 'b', 'B'));
-	else if (section_header->sh_flags & SHF_ALLOC)
+	else if (get_section_header_flags(section_header) & SHF_ALLOC)
 	{
-		if (section_header->sh_flags & SHF_EXECINSTR)
+		if (get_section_header_flags(section_header) & SHF_EXECINSTR)
 			return (get_right_symbol(binding, 't', 'T'));
-		else if (!(section_header->sh_flags & SHF_WRITE))
+		else if (!(get_section_header_flags(section_header) & SHF_WRITE))
 			return (get_right_symbol(binding, 'r', 'R'));
 		return (get_right_symbol(binding, 'd', 'D'));
 	}
@@ -607,69 +676,118 @@ char get_symbol_type_char_64bit(Elf64_Sym *sym)
 		return '?';
 }
 
-char get_symbol_type_char_32bit(Elf32_Sym *sym)
-{
-	Elf32_Shdr		*section_header;
-	unsigned char	binding;
+//char get_symbol_type_char_64bit(Elf64_Sym *sym)
+//{
+//	Elf64_Shdr		*section_header;
+//	unsigned char	binding;
+//
+//	section_header = get_section_header_64bit(sym->st_shndx);
+//	if (section_header == NULL)
+//		return (0);
+//	binding = ELF64_ST_BIND(sym->st_info);
+//	if (binding >= STB_NUM)
+//	{
+//		ft_printf("Symbol binding is invalid or not supported (%hhd)", binding);
+//		return (0);
+//	}
+//	// TODO Check for STB_WEAK and for STB_LOPROC, STB_HIPROC
+//	if (binding == STB_WEAK)
+//	{
+//		if (ELF64_ST_TYPE(sym->st_info) == STT_OBJECT)
+//		{
+//			if (sym->st_value == 0)
+//				return 'v';
+//			else
+//				return 'V';
+//		}
+//		else
+//		{
+//			if (sym->st_value == 0)
+//				return 'w';
+//			else
+//				return 'W';
+//		}
+//	}
+//	else if (sym->st_shndx == SHN_UNDEF)
+//		return 'U';
+//	else if (section_header->sh_type == SHT_NOBITS)
+//		return (get_right_symbol(binding, 'b', 'B'));
+//	else if (section_header->sh_flags & SHF_ALLOC)
+//	{
+//		if (section_header->sh_flags & SHF_EXECINSTR)
+//			return (get_right_symbol(binding, 't', 'T'));
+//		else if (!(section_header->sh_flags & SHF_WRITE))
+//			return (get_right_symbol(binding, 'r', 'R'));
+//		return (get_right_symbol(binding, 'd', 'D'));
+//	}
+//	else
+//		return '?';
+//}
+//
+//char get_symbol_type_char_32bit(Elf32_Sym *sym)
+//{
+//	Elf32_Shdr		*section_header;
+//	unsigned char	binding;
+//
+//	section_header = get_section_header_32bit(sym->st_shndx);
+//	if (section_header == NULL)
+//		return (0);
+//	binding = ELF32_ST_BIND(sym->st_info);
+//	if (binding >= STB_NUM)
+//	{
+//		ft_printf("Symbol binding is invalid or not supported (%hhd)", binding);
+//		return (0);
+//	}
+//	// TODO Check for STB_WEAK and for STB_LOPROC, STB_HIPROC
+//	if (binding == STB_WEAK)
+//	{
+//		if (ELF32_ST_TYPE(sym->st_info) == STT_OBJECT)
+//		{
+//			if (sym->st_value == 0)
+//				return 'v';
+//			else
+//				return 'V';
+//		}
+//		else
+//		{
+//			if (sym->st_value == 0)
+//				return 'w';
+//			else
+//				return 'W';
+//		}
+//	}
+//	else if (sym->st_shndx == SHN_UNDEF)
+//		return 'U';
+//	else if (section_header->sh_type == SHT_NOBITS)
+//		return (get_right_symbol(binding, 'b', 'B'));
+//	else if (section_header->sh_flags & SHF_ALLOC)
+//	{
+//		if (section_header->sh_flags & SHF_EXECINSTR)
+//			return (get_right_symbol(binding, 't', 'T'));
+//		else if (!(section_header->sh_flags & SHF_WRITE))
+//			return (get_right_symbol(binding, 'r', 'R'));
+//		return (get_right_symbol(binding, 'd', 'D'));
+//	}
+//	else
+//		return '?';
+//}
 
-	section_header = get_section_header_32bit(sym->st_shndx);
-	if (section_header == NULL)
-		return (0);
-	binding = ELF32_ST_BIND(sym->st_info);
-	if (binding >= STB_NUM)
-	{
-		ft_printf("Symbol binding is invalid or not supported (%hhd)", binding);
-		return (0);
-	}
-	// TODO Check for STB_WEAK and for STB_LOPROC, STB_HIPROC
-	if (binding == STB_WEAK)
-	{
-		if (ELF32_ST_TYPE(sym->st_info) == STT_OBJECT)
-		{
-			if (sym->st_value == 0)
-				return 'v';
-			else
-				return 'V';
-		}
-		else
-		{
-			if (sym->st_value == 0)
-				return 'w';
-			else
-				return 'W';
-		}
-	}
-	else if (sym->st_shndx == SHN_UNDEF)
-		return 'U';
-	else if (section_header->sh_type == SHT_NOBITS)
-		return (get_right_symbol(binding, 'b', 'B'));
-	else if (section_header->sh_flags & SHF_ALLOC)
-	{
-		if (section_header->sh_flags & SHF_EXECINSTR)
-			return (get_right_symbol(binding, 't', 'T'));
-		else if (!(section_header->sh_flags & SHF_WRITE))
-			return (get_right_symbol(binding, 'r', 'R'));
-		return (get_right_symbol(binding, 'd', 'D'));
-	}
-	else
-		return '?';
-}
+//int test()
+//{
+//	return 3;
+//}
+//
+//int tea_t()
+//{
+//	return 3;
+//}
+//
+//int te_st()
+//{
+//	return 3;
+//}
 
-int test()
-{
-	return 3;
-}
-
-int tea_t()
-{
-	return 3;
-}
-
-int te_st()
-{
-	return 3;
-}
-
+// TODO Check for 'B'
 /**
  * @warning Do not free the returned string !
  * @brief
@@ -678,9 +796,8 @@ int te_st()
  */
 char	*get_right_address_string(Elf64_Addr address, char sym_char)
 {
-	static char buff[17];
+	static char	buff[17];
 
-	// TODO Check for 'B'
 	if (address != 0 || sym_char == 'b' || sym_char == 'B')
 	{
 		ft_snprintf(buff, sizeof(buff), "%016x", address);
@@ -690,126 +807,162 @@ char	*get_right_address_string(Elf64_Addr address, char sym_char)
 		return ("                ");
 }
 
-t_vector	*get_all_symbol_64bit()
+t_vector	*init_symbols_vector_64bit(void)
+{
+	t_vector	*symbols;
+
+	symbols = malloc(sizeof(t_vector));
+	if (symbols == NULL)
+		return (NULL);
+	if (!vector_init(symbols, sizeof(Elf64_Sym *)))
+	{
+		free(symbols);
+		return (NULL);
+	}
+	return (symbols);
+}
+
+t_vector	*get_all_symbol_64bit(void)
 {
 	Elf64_Sym	*symbol_array;
 	t_vector	*vector;
+	Elf64_Sym	*sym;
+	size_t		i;
 
-	vector = malloc(sizeof(t_vector));
+	vector = init_symbols_vector_64bit();
 	if (vector == NULL)
 		return (NULL);
-	if (!vector_init(vector, sizeof(Elf64_Sym *)))
+	symbol_array = get_env()->elf_file
+		+ get_symbol_table_section_header()->sh_offset;
+	i = 0;
+	while (i < get_symbol_table_section_header()->sh_size
+		/ get_symbol_table_section_header()->sh_entsize)
 	{
-		free(vector);
-		return (NULL);
-	}
-	symbol_array = get_env()->elf_file + get_symbol_table_section_header()->sh_offset;
-	size_t i = 0;
-	while (i < get_symbol_table_section_header()->sh_size / get_symbol_table_section_header()->sh_entsize)
-	{
-		if (symbol_array[i].st_name != 0 && ELF64_ST_TYPE(symbol_array[i].st_info) != STT_FILE)
+		if (symbol_array[i].st_name != 0
+			&& ELF64_ST_TYPE(symbol_array[i].st_info) != STT_FILE)
 		{
-//			Elf64_Sym	*sym;
-//
-//			sym = &symbol_array[i];
-//			vector_push(&vector, &sym);
-			insert_symbol_in_alphabetical_order_64bit(vector, &symbol_array[i], get_env()->options.reverse);
+			sym = &symbol_array[i];
+			vector_push(vector, &sym);
 		}
 		i++;
 	}
 	return (vector);
 }
 
-t_vector	*get_all_symbol_32bit()
+t_vector	*init_symbols_vector_32bit(void)
 {
-	Elf32_Sym	*symbol_array;
-	t_vector	*vector;
+	t_vector	*symbols;
 
-	vector = malloc(sizeof(t_vector));
-	if (vector == NULL)
+	symbols = malloc(sizeof(t_vector));
+	if (symbols == NULL)
 		return (NULL);
-	if (!vector_init(vector, sizeof(Elf32_Sym *)))
+	if (!vector_init(symbols, sizeof(Elf32_Sym *)))
 	{
-		free(vector);
+		free(symbols);
 		return (NULL);
 	}
-	symbol_array = get_env()->elf_file + get_symbol_table_section_header()->sh_offset;
-	size_t i = 0;
-	while (i < get_symbol_table_section_header()->sh_size / get_symbol_table_section_header()->sh_entsize)
+	return (symbols);
+}
+
+t_vector	*get_all_symbol_32bit(void)
+{
+	Elf32_Sym	*symbol_array;
+	t_vector	*symbols;
+	Elf32_Sym	*sym;
+	size_t		i;
+
+	symbols = init_symbols_vector_32bit();
+	if (symbols == NULL)
+		return (NULL);
+	symbol_array = get_env()->elf_file
+		+ get_symbol_table_section_header()->sh_offset;
+	i = 0;
+	while (i < get_symbol_table_section_header()->sh_size
+		/ get_symbol_table_section_header()->sh_entsize)
 	{
-		if (symbol_array[i].st_name != 0 && ELF64_ST_TYPE(symbol_array[i].st_info) != STT_FILE)
+		if (symbol_array[i].st_name != 0
+			&& ELF64_ST_TYPE(symbol_array[i].st_info) != STT_FILE)
 		{
-//			Elf64_Sym	*sym;
-//
-//			sym = &symbol_array[i];
-//			vector_push(&vector, &sym);
-			insert_symbol_in_alphabetical_order_32bit(vector, &symbol_array[i], get_env()->options.reverse);
+			sym = &symbol_array[i];
+			vector_push(symbols, &sym);
 		}
 		i++;
 	}
-	return (vector);
+	return (symbols);
+}
+//insert_symbol_in_alphabetical_order_32bit(vector, &symbol_array[i],
+// get_env()->options.reverse);
+
+void	print_debug_info_64bit(Elf64_Sym *sym)
+{
+	char	*bind;
+
+	if (ELF64_ST_BIND(sym->st_info) == STB_LOCAL)
+		bind = "LOCAL";
+	else
+		bind = "EXTERNAL";
+	ft_printf(" | binding: %s | section: %s",
+		bind,
+		get_section_string_from_strtab(get_section_header_64bit(
+				sym->st_shndx)->sh_name));
 }
 
 bool	print_symbols_64bit(t_vector *vector)
 {
-	size_t i;
+	size_t		i;
+	char		symbol_char;
+	Elf64_Sym	*sym;
 
 	i = 0;
 	while (i < vector->total)
 	{
-		Elf64_Sym *sym = *(Elf64_Sym **)vector_get(vector, i);
-//		ft_printf("%s %c %s %s %s\n",
-//				  get_right_address_string(sym),
-//				  get_symbol_type_char_64bit(sym),
-//				  get_string_from_shstrtab(sym->st_name),
-//				  get_section_string_from_strtab(get_section_header_64bit(sym->st_shndx)->sh_name),
-//				  ELF64_ST_BIND(sym->st_info) == STB_LOCAL ? "LOCAL" : "EXTERNAL");
-		char symbol_char;
-		symbol_char = get_symbol_type_char_64bit(sym);
+		sym = *(Elf64_Sym **)vector_get(vector, i);
+		symbol_char = get_symbol_type_char(sym);
 		ft_printf("%s %c %s",
-				  get_right_address_string(sym->st_value, symbol_char),
-				  symbol_char,
-				  get_string_from_shstrtab(sym->st_name));
+			get_right_address_string(sym->st_value, symbol_char),
+			symbol_char,
+			get_string_from_shstrtab(sym->st_name));
 		if (symbol_char == '?')
-		{
-			ft_printf(" | binding: %s | section: %s",
-					  ELF64_ST_BIND(sym->st_info) == STB_LOCAL ? "LOCAL" : "EXTERNAL",
-					  get_section_string_from_strtab(get_section_header_64bit(sym->st_shndx)->sh_name));
-		}
+			print_debug_info_64bit(sym);
 		ft_printf("\n");
 		if (symbol_char == '?')
 			print_section(get_section_header_64bit(sym->st_shndx));
 		i++;
 	}
 	return (true);
+}
+
+void	print_debug_info_32bit(Elf32_Sym *sym)
+{
+	char	*bind;
+
+	if (ELF32_ST_BIND(sym->st_info) == STB_LOCAL)
+		bind = "LOCAL";
+	else
+		bind = "EXTERNAL";
+	ft_printf(" | binding: %s | section: %s",
+		bind,
+		get_section_string_from_strtab(get_section_header_32bit(
+				sym->st_shndx)->sh_name));
 }
 
 bool	print_symbols_32bit(t_vector *vector)
 {
-	size_t i;
+	size_t		i;
+	char		symbol_char;
+	Elf32_Sym	*sym;
 
 	i = 0;
 	while (i < vector->total)
 	{
-		Elf32_Sym *sym = *(Elf32_Sym **)vector_get(vector, i);
-//		ft_printf("%s %c %s %s %s\n",
-//				  get_right_address_string(sym),
-//				  get_symbol_type_char_64bit(sym),
-//				  get_string_from_shstrtab(sym->st_name),
-//				  get_section_string_from_strtab(get_section_header_64bit(sym->st_shndx)->sh_name),
-//				  ELF64_ST_BIND(sym->st_info) == STB_LOCAL ? "LOCAL" : "EXTERNAL");
-		char symbol_char;
-		symbol_char = get_symbol_type_char_32bit(sym);
+		sym = *(Elf32_Sym **)vector_get(vector, i);
+		symbol_char = get_symbol_type_char(sym);
 		ft_printf("%s %c %s",
-				  get_right_address_string(sym->st_value, symbol_char),
-				  symbol_char,
-				  get_string_from_shstrtab(sym->st_name));
+			get_right_address_string(sym->st_value, symbol_char),
+			symbol_char,
+			get_string_from_shstrtab(sym->st_name));
 		if (symbol_char == '?')
-		{
-			ft_printf(" | binding: %s | section: %s",
-					  ELF64_ST_BIND(sym->st_info) == STB_LOCAL ? "LOCAL" : "EXTERNAL",
-					  get_section_string_from_strtab(get_section_header_64bit(sym->st_shndx)->sh_name));
-		}
+			print_debug_info_32bit(sym);
 		ft_printf("\n");
 		if (symbol_char == '?')
 			print_section(get_section_header_64bit(sym->st_shndx));
@@ -818,47 +971,113 @@ bool	print_symbols_32bit(t_vector *vector)
 	return (true);
 }
 
-int main(int ac, char **av)
+bool	error_free(t_file_data *file_data)
 {
-	void *mem;
+	munmap(file_data->data, file_data->length);
+	free_env();
+	return (false);
+}
+
+bool	process_elf_64bit(t_file_data *file_data)
+{
+	t_vector	*symbols;
+
+	symbols = get_all_symbol_64bit();
+	if (symbols == NULL)
+		return (error_free(file_data));
+	merge_sort(symbols->items, symbols->total, symbols->sizeof_elem, sym_cmp);
+	print_symbols_64bit(symbols);
+	vector_free(symbols);
+	free(symbols);
+	return (true);
+}
+
+bool	process_elf_32bit(t_file_data *file_data)
+{
+	t_vector	*symbols;
+
+	symbols = get_all_symbol_32bit();
+	if (symbols == NULL)
+		return (error_free(file_data));
+	print_symbols_32bit(symbols);
+	vector_free(symbols);
+	free(symbols);
+	return (true);
+}
+
+int	process_file(void)
+{
+	t_file_data	file_data;
+
+	file_data = get_file_data();
+	if (file_data.data == NULL)
+		return (1);
+	if (!init_elf_data(file_data.data))
+		return (1);
+	if (get_env()->is_64bit)
+	{
+		if (!process_elf_64bit(&file_data))
+			return (-1);
+	}
+	else
+	{
+		if (!process_elf_32bit(&file_data))
+			return (-1);
+	}
+	munmap(file_data.data, file_data.length);
+	if (get_env()->file_index == get_env()->files.total)
+		return (0);
+	return (1);
+}
+
+void printArray(char *A[], int size)
+{
+	int i;
+	for (i=0; i < size; i++)
+		ft_printf("%s ", A[i]);
+	ft_printf("\n");
+}
+
+int	main(int ac, char **av)
+{
+
+//	char *arr[] = {"abbbb", "aaa", "q_ggg", "dyyyy", "Ccc__c", "dfddd__",
+//				   "___bbbb", "kaaa", "ggg", "_yyyy", "gcCcc", "dddd",
+//				   "bbbb", "aaa", "j_ggg", "yyyy", "Ccc__c", "dddd__",
+//				   "a___bbbb", "aaa", "ggg", "lf_yyyy", "cCcc", "dddd",
+//				   "bbbb", "aaa", "_ggg", "yyyy", "Ccc__c", "dddd__",
+//				   "___bbbb", "aaa", "ggg", "_yyyy", "cCcc", "dddd"};
+//	int n = sizeof(arr)/sizeof(arr[0]);
+//
+//	ft_printf("Given array is \n");
+//	printArray(arr, n);
+//
+//	merge_sort_string(arr, n, custom_strcmp);
+//
+//	ft_printf("\nSorted array is \n");
+//	printArray(arr, n);
+//	return 0;
+
+	int	ret;
 
 	init_env();
-//	get_env()->exec_name = av[0];
-	get_env()->exec_name = "nm";
-    if (!parse_args(ac, av))
+	get_env()->exec_name = av[0];
+	if (!parse_args(ac, av))
 	{
-        return (EXIT_FAILURE);
+		free_env();
+		return (EXIT_FAILURE);
 	}
-
-	while (get_env()->file_index != get_env()->files.total || get_env()->files.total == 0)
+	while (get_env()->file_index != get_env()->files.total
+		|| get_env()->files.total == 0)
 	{
-		mem = get_file_data();
-		if (mem == NULL)
-			continue;
-		if (!init_elf_data(mem))
-			continue;
-
-		t_vector	*symbols;
-
-		if (get_env()->is_64bit)
-		{
-			symbols = get_all_symbol_64bit();
-			if (symbols == NULL)
-				return (EXIT_FAILURE);
-			print_symbols_64bit(symbols);
-		}
+		ret = process_file();
+		if (ret == 1)
+			continue ;
+		else if (ret == 0)
+			break ;
 		else
-		{
-			symbols = get_all_symbol_32bit();
-			if (symbols == NULL)
-				return (EXIT_FAILURE);
-			print_symbols_32bit(symbols);
-		}
-		vector_free(symbols);
-		free(symbols);
-		if (get_env()->file_index == get_env()->files.total)
-			break;
+			return (EXIT_FAILURE);
 	}
-	vector_free(&get_env()->files);
+	free_env();
 	return (EXIT_SUCCESS);
 }
